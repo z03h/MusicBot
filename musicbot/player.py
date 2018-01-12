@@ -18,6 +18,8 @@ from .lib.event_emitter import EventEmitter
 from .constructs import Serializable, Serializer
 from .exceptions import FFmpegError, FFmpegWarning
 
+from collections import deque
+
 log = logging.getLogger(__name__)
 
 
@@ -102,6 +104,9 @@ class MusicPlayer(EventEmitter, Serializable):
         self.playlist = playlist
         self.state = MusicPlayerState.STOPPED
         self.skip_state = None
+        
+        #z03h
+        self.last_played = deque(maxlen=25)
 
         self._volume = bot.config.default_volume
         self._play_lock = asyncio.Lock()
@@ -174,7 +179,9 @@ class MusicPlayer(EventEmitter, Serializable):
 
     def _playback_finished(self):
         entry = self._current_entry
-
+        #z03h
+        self.last_played.appendleft(entry)
+        
         if self._current_player:
             self._current_player.after = None
             self._kill_current_player()

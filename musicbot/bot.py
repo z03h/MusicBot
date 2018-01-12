@@ -2709,10 +2709,33 @@ class MusicBot(discord.Client):
             del player.playlist.entries[(num-1)]
             
             if not self.config.save_videos:
-                await player._delete_file(os.path.relpath(entry.filename))
+                await player._delete_file(entry.filename)
             
             return Response('Removed `{}`'.format(entry.title), reply=True, delete_after=30)
         else:
             return Response('Cannot remove `{}` from `{}`'.format(entry.title,str(entry.meta.author)), reply=True, delete_after=20)
+            
+    async def cmd_last(self, player, num=None):
+        """
+        Usage:
+            {command_prefix}last <num>
+
+            shows the last <num> songs played
+        max num = 25
+        """
+        if num:
+            try:
+                num=int(num)
+            except ValueError:
+                return Response('`Must be a number`', delete=20)
+        else:
+            num = 5
+            
+        msg_txt = ["Last Played:"]
+        for i in range(0,min(num, len(player.last_played))):
+            entry = player.last_played[i]
+            msg_txt.append('`{}`. **{}** {}'.format(i+1,entry.title,'*added by* **%s**' % entry.meta['author'] if entry.meta.get('author',False) else ''))
+            
+        return Response('\n'.join(msg_txt), delete_after=45)
         
 
