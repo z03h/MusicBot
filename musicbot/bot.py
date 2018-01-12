@@ -1621,7 +1621,6 @@ class MusicBot(discord.Client):
           - note: If your search query starts with a number,
                   you must put your query in quotes
             - ex: {command_prefix}search 2 "I ran seagulls"
-        The command issuer can use reactions to indicate their response to each result.
         """
 
         if permissions.max_songs and player.playlist.count_for_user(author) > permissions.max_songs:
@@ -1638,7 +1637,12 @@ class MusicBot(discord.Client):
                         self.cmd_search.__doc__.format(command_prefix=self.config.command_prefix)),
                     expire_in=60
                 )
-
+        def check(m):
+            return (
+                m.content.lower()[0] in 'yn' or
+                # hardcoded function name weeee
+                m.content.lower().startswith('{}{}'.format(self.config.command_prefix, 'search')) or
+                m.content.lower().startswith('exit'))
         argcheck()
 
         try:
@@ -1700,29 +1704,38 @@ class MusicBot(discord.Client):
             result_message = await self.safe_send_message(channel, "Result %s/%s: %s" % (
                 info['entries'].index(e) + 1, len(info['entries']), e['webpage_url']))
 
-            reactions = ['\u2705', '\U0001F6AB', '\U0001F3C1']
-            for r in reactions:
-                await self.add_reaction(result_message, r)
-            res = await self.wait_for_reaction(reactions, user=author, timeout=30, message=result_message)
+            confirm_message = await self.safe_send_message(channel, "Is this ok? Type `y`, `n` or `exit`")
+            response_message = await self.wait_for_message(30, author=author, channel=channel, check=check)
 
-            if not res:
+            if not response_message:
                 await self.safe_delete_message(result_message)
+                await self.safe_delete_message(confirm_message)
+                return Response("Ok nevermind.", delete_after=30)
+
+            # They started a new search query so lets clean up and bugger off
+            elif response_message.content.startswith(self.config.command_prefix) or \
+                    response_message.content.lower().startswith('exit'):
+
+                await self.safe_delete_message(result_message)
+                await self.safe_delete_message(confirm_message)
                 return
 
-            if res.reaction.emoji == '\u2705': # check
+            if response_message.content.lower().startswith('y'):
                 await self.safe_delete_message(result_message)
-                await self.cmd_play(player, channel, author, permissions, [], e['webpage_url'])
-                return Response("Alright, coming right up!", delete_after=30)
-            elif res.reaction.emoji == '\U0001F6AB': # cross
-                await self.safe_delete_message(result_message)
-                continue
+                await self.safe_delete_message(confirm_message)
+                await self.safe_delete_message(response_message)
+
+                return await self.cmd_play(player, channel, author, permissions, [], e['webpage_url'])
+
+                #return Response("Alright, coming right up!", delete_after=30)
             else:
                 await self.safe_delete_message(result_message)
-                break
+                await self.safe_delete_message(confirm_message)
+                await self.safe_delete_message(response_message)
 
         return Response("Oh well \N{SLIGHTLY FROWNING FACE}", delete_after=30)
 
-    async def cmd_np(self, player, channel, server, message):
+    async def cmd_np(self, player, channel, server, message, author, dest=None):
         """
         Usage:
             {command_prefix}np
@@ -1760,9 +1773,11 @@ class MusicBot(discord.Client):
                     progress=prog_str,
                     url=player.current_entry.url
                 )
-
-            self.server_specific_data[server]['last_np_msg'] = await self.safe_send_message(channel, np_text)
-            await self._manual_delete_check(message)
+            if dest=='pm':
+                await self.safe_send_message(author, np_text)
+            else:
+                self.server_specific_data[server]['last_np_msg'] = await self.safe_send_message(channel, np_text)
+                await self._manual_delete_check(message)
         else:
             return Response(
                 'There are no songs queued! Queue something with {}play.'.format(self.config.command_prefix),
@@ -2011,13 +2026,13 @@ class MusicBot(discord.Client):
                     player.current_entry.title, player.current_entry.meta['author'].name, prog_str))
             else:
                 lines.append("Now Playing: **%s** %s\n" % (player.current_entry.title, prog_str))
-
+        time=0
         for i, item in enumerate(player.playlist, 1):
             if item.meta.get('channel', False) and item.meta.get('author', False):
-                nextline = '`{}.` **{}** added by **{}**'.format(i, item.title, item.meta['author'].name).strip()
+                nextline = '`{}.` **{}** added by **{}** `{}`'.format(i, item.title, item.meta['author'].name, str(timedelta(seconds=item.duration)).lstrip('0').lstrip(':')).strip()
             else:
-                nextline = '`{}.` **{}**'.format(i, item.title).strip()
-
+                nextline = '`{}.` **{}** `{}`'.format(i, item.title, str(timedelta(seconds=item.duration)).lstrip('0').lstrip(':')).strip()
+            time+=item.duration
             currentlinesum = sum(len(x) + 1 for x in lines)  # +1 is for newline char
 
             if currentlinesum + len(nextline) + len(andmoretext) > DISCORD_MSG_CHAR_LIMIT:
@@ -2029,7 +2044,11 @@ class MusicBot(discord.Client):
 
         if unlisted:
             lines.append('\n*... and %s more*' % unlisted)
-
+            
+        if len(lines)>1:
+            lines.append('Queue length: `{}`'.format(str(timedelta(seconds=time)).lstrip('0').lstrip(':')))
+        elif len(lines)==1:
+            lines.append('No other songs queued')
         if not lines:
             lines.append(
                 'There are no songs queued! Queue something with {}play.'.format(self.config.command_prefix))
@@ -2737,5 +2756,135 @@ class MusicBot(discord.Client):
             msg_txt.append('`{}`. **{}** {}'.format(i+1,entry.title,'*added by* **%s**' % entry.meta['author'] if entry.meta.get('author',False) else ''))
             
         return Response('\n'.join(msg_txt), delete_after=45)
+        
+    async def cmd_listsearch(self, player, channel, author, permissions, leftover_args):
+        """
+        Usage:
+            {command_prefix}listsearch [service] [number] query
+
+        Searches a service for a video and adds it to the queue.
+        - service: any one of the following services:
+            - youtube (yt) (default if unspecified)
+            - soundcloud (sc)
+            - yahoo (yh)
+        - number: return a number of video results and waits for user to choose one
+          - defaults to 3 if unspecified
+          - note: If your search query starts with a number,
+                  you must put your query in quotes
+            - ex: {command_prefix}search 2 "I ran seagulls"
+        """
+
+        if permissions.max_songs and player.playlist.count_for_user(author) > permissions.max_songs:
+            raise exceptions.PermissionsError(
+                "You have reached your playlist item limit (%s)" % permissions.max_songs,
+                expire_in=30
+            )
+
+        def argcheck():
+            if not leftover_args:
+                # noinspection PyUnresolvedReferences
+                raise exceptions.CommandError(
+                    "Please specify a search query.\n%s" % dedent(
+                        self.cmd_search.__doc__.format(command_prefix=self.config.command_prefix)),
+                    expire_in=60
+                )
+        def check(m):
+            return (
+                (m.content.lower()[0] in '1234567890' and len(m.content)<3 )or
+                # hardcoded function name weeee
+                m.content.lower().startswith('{}{}'.format(self.config.command_prefix, 'search')) or
+                m.content.lower().startswith('exit'))
+        argcheck()
+
+        try:
+            leftover_args = shlex.split(' '.join(leftover_args))
+        except ValueError:
+            raise exceptions.CommandError("Please quote your search query properly.", expire_in=30)
+
+        service = 'youtube'
+        items_requested = 3
+        max_items = 10  # this can be whatever, but since ytdl uses about 1000, a small number might be better
+        services = {
+            'youtube': 'ytsearch',
+            'soundcloud': 'scsearch',
+            'yahoo': 'yvsearch',
+            'yt': 'ytsearch',
+            'sc': 'scsearch',
+            'yh': 'yvsearch'
+        }
+
+        if leftover_args[0] in services:
+            service = leftover_args.pop(0)
+            argcheck()
+
+        if leftover_args[0].isdigit():
+            items_requested = int(leftover_args.pop(0))
+            argcheck()
+
+            if items_requested > max_items:
+                raise exceptions.CommandError("You cannot search for more than %s videos" % max_items)
+
+        # Look jake, if you see this and go "what the fuck are you doing"
+        # and have a better idea on how to do this, i'd be delighted to know.
+        # I don't want to just do ' '.join(leftover_args).strip("\"'")
+        # Because that eats both quotes if they're there
+        # where I only want to eat the outermost ones
+        if leftover_args[0][0] in '\'"':
+            lchar = leftover_args[0][0]
+            leftover_args[0] = leftover_args[0].lstrip(lchar)
+            leftover_args[-1] = leftover_args[-1].rstrip(lchar)
+
+        search_query = '%s%s:%s' % (services[service], items_requested, ' '.join(leftover_args))
+
+        search_msg = await self.send_message(channel, "Searching for videos...")
+        await self.send_typing(channel)
+
+        try:
+            info = await self.downloader.extract_info(player.playlist.loop, search_query, download=False, process=True)
+
+        except Exception as e:
+            await self.safe_edit_message(search_msg, str(e), send_if_fail=True)
+            return
+        else:
+            await self.safe_delete_message(search_msg)
+
+        if not info:
+            return Response("No videos found.", delete_after=30)
+        msg_txt='Results:\n'
+        for e in info['entries']:
+            msg_txt+="`{}.` {}\n\t<{}>\n".format(info['entries'].index(e)+1, e['title'], e['webpage_url'])
+            
+        result_message = await self.safe_send_message(channel, msg_txt)
+            
+
+        confirm_message = await self.safe_send_message(channel, "Type the result number or `exit`")
+        response_message = await self.wait_for_message(50, author=author, channel=channel, check=check)
+
+        if not response_message:
+            await self.safe_delete_message(result_message)
+            await self.safe_delete_message(confirm_message)
+            return Response("Ok nevermind.", delete_after=30)
+
+        # They started a new search query so lets clean up and bugger off
+        elif response_message.content.startswith(self.config.command_prefix) or \
+                response_message.content.lower().startswith('exit'):
+
+            await self.safe_delete_message(result_message)
+            await self.safe_delete_message(confirm_message)
+            return
+
+        try:
+            index = int(response_message.content)
+            index -= 1
+            await self.safe_delete_message(result_message)
+            await self.safe_delete_message(confirm_message)
+            await self.safe_delete_message(response_message)
+            if index<0 or index>9:
+                return Response('Number must be between 1-{}'.format(len(info['entries'])))
+            return await self.cmd_play(player, channel, author, permissions, [], info['entries'][index]['webpage_url'])
+        except ValueError:
+            return Response('`Needs to be a number`', delete_after=20)
+
+        return Response("Oh well \N{SLIGHTLY FROWNING FACE}", delete_after=30)
         
 
