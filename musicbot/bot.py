@@ -866,13 +866,14 @@ class MusicBot(discord.Client):
         expire_in = kwargs.pop('expire_in', 0)
         allow_none = kwargs.pop('allow_none', True)
         also_delete = kwargs.pop('also_delete', None)
+        embed = kwargs.pop('embed', None)
 
         msg = None
         lfunc = log.debug if quiet else log.warning
 
         try:
             if content is not None or allow_none:
-                msg = await self.send_message(dest, content, tts=tts)
+                msg = await self.send_message(dest, content, tts=tts, embed=embed)
 
         except discord.Forbidden:
             lfunc("Cannot send message to \"%s\", no permission", dest.name)
@@ -2676,3 +2677,42 @@ class MusicBot(discord.Client):
             log.debug("Pausing player in \"{}\" due to unavailability.".format(server.name))
             self.server_specific_data[server]['availability_paused'] = True
             player.pause()
+            
+############### z03h stuff below
+                
+    async def cmd_rm(self, message, player, author, permissions, index):
+        """
+        Usage:
+            {command_prefix}rm <index>
+                
+                index of song to remove
+            
+            Removes song at index in queue
+        """
+        
+        try:
+            num=int(index)
+            if (num < 1):
+                return Response('`Number must be greater than 0`', delete_after = 20)
+            if num >len(player.playlist.entries):
+                return Response('`Number must be less than queue length({})`'.format(len(player.playlist)), reply=True, delete_after=20)
+        except ValueError:
+            return Response('`Not an integer`', delete_after = 20)
+            
+        if author.id == self.config.owner_id \
+                or permissions.instaskip \
+                or player.playlist.entries[(num-1)].meta['author'] == None \
+                or author == player.playlist.entries[(num-1)].meta['author']:
+            await self._manual_delete_check(message)
+        
+            entry = player.playlist.entries[(num-1)]
+            del player.playlist.entries[(num-1)]
+            
+            if not self.config.save_videos:
+                await player._delete_file(os.path.relpath(entry.filename))
+            
+            return Response('Removed `{}`'.format(entry.title), reply=True, delete_after=30)
+        else:
+            return Response('Cannot remove `{}` from `{}`'.format(entry.title,str(entry.meta.author)), reply=True, delete_after=20)
+        
+
