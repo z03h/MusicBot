@@ -658,7 +658,7 @@ class MusicBot(discord.Client):
                     else:
                         # Probably an error from a different extractor, but I've only seen youtube's
                         log.error("Error processing \"{url}\": {ex}".format(url=song_url, ex=e))
-
+                    
                     await self.remove_from_autoplaylist(song_url, ex=e, delete_from_ap=True)
                     continue
 
@@ -2140,7 +2140,7 @@ class MusicBot(discord.Client):
                 return await self.cmd_pldump(channel, info.get(''))
 
         linegens = defaultdict(lambda: None, **{
-            "youtube":    lambda d: 'https://www.youtube.com/watch?v=%s' % d['id'],
+            "youtube":    lambda d: 'https://youtube.com/watch?v=%s' % d['id'],
             "soundcloud": lambda d: d['url'],
             "bandcamp":   lambda d: d['url']
         })
@@ -2732,7 +2732,7 @@ class MusicBot(discord.Client):
             
             return Response('Removed `{}`'.format(entry.title), reply=True, delete_after=30)
         else:
-            return Response('Cannot remove `{}` from `{}`'.format(entry.title,str(entry.meta.author)), reply=True, delete_after=20)
+            return Response('Cannot remove `{}` from `{}`'.format(entry.title,entry.meta.get('author',''), reply=True, delete_after=20))
             
     async def cmd_last(self, player, num=None):
         """
@@ -2879,12 +2879,170 @@ class MusicBot(discord.Client):
             await self.safe_delete_message(result_message)
             await self.safe_delete_message(confirm_message)
             await self.safe_delete_message(response_message)
-            if index<0 or index>9:
+            if index<0 or index>len(info['entries']):
                 return Response('Number must be between 1-{}'.format(len(info['entries'])))
             return await self.cmd_play(player, channel, author, permissions, [], info['entries'][index]['webpage_url'])
         except ValueError:
             return Response('`Needs to be a number`', delete_after=20)
 
         return Response("Oh well \N{SLIGHTLY FROWNING FACE}", delete_after=30)
+        
+    async def cmd_auto(self, channel, server, op, url):
+        """
+        Usage:
+            {command_prefix}auto (+/-) <url>
+                
+                + : add song (or playlist) into autoplaylist
+                - : remove song (or playlist) from autoplaylist
+        """
+        
+        if op =='+':
+            busymsg = await self.safe_send_message(channel, "Working on link `{}`".format(url))
+            verified_url = await self.process_link(url)
+            if verified_url and isinstance(verified_url, Response):
+                return verified_url
+                
+            total = len(verified_url)    
+
+            #busymsg = await self.safe_edit_message(busymsg, "Attempting to add `{}` songs...".format(total), send_if_fail=True)
+
+            added = 0
+            async with self.aiolocks[_func_()]:
+                for xurl in verified_url:
+                    #print(xurl)
+                    if xurl not in self.autoplaylist:
+                        self.autoplaylist.append(xurl)
+                        added += 1
+                if added: 
+                    write_file(self.config.auto_playlist_file, self.autoplaylist)
+                    log.debug("Appended {}/{} from {} to autoplaylist".format(added, total, url))
+
+                await self.safe_delete_message(busymsg)
+                if added and total >1:
+                    return Response("Added `{}/{}` songs from <{}> to autoplaylist".format(added, total, url), delete_after=45)
+                elif added and total ==1: 
+                    return Response("Added `{}` to autoplaylist".format(verified_url[0]), delete_after=30)
+                else:
+                    return Response("Nothing added?", delete_after=30)
+        elif op == '-':
+            url = url.replace('www.', '', 1)
+            busymsg = await self.safe_send_message(channel, "Working on link `{}`".format(url))
+            verified_url = await self.process_link(url, check_plist=True)
+
+            async with self.aiolocks[_func_()]:            
+                if verified_url:
+                    #playlist
+                    if isinstance(verified_url, Response):
+                        return verified_url
+                    
+                    total = len(verified_url)    
+                    removed = 0
+                    for xurl in verified_url:
+                        if xurl in self.autoplaylist:
+                            self.autoplaylist.remove(xurl)
+
+                            removed+=1
+                    if removed:        
+                        write_file(self.config.auto_playlist_file, self.autoplaylist)
+                        log.debug("Removed {}/{} from {} from autoplaylist".format(removed, total, url))
+
+                    await self.safe_delete_message(busymsg)
+                    if removed:
+                        return Response("Removed `{}/{}` songs from <{}> from autoplaylist".format(removed, total, url), delete_after=45)
+                    else:
+                        return Response("Nothing from playlist removed?", delete_after=30)
+                else:
+                    #not playlist
+                    url = url.replace('youtu.be/', 'youtube.com/watch?v=', 1)
+                    print(url)
+                    if url in self.autoplaylist:
+                        self.autoplaylist.remove(url)
+                        write_file(self.config.auto_playlist_file, self.autoplaylist)
+                        log.debug("Removed {} from autoplaylist".format(url))
+                        return Response("Removed `{}` from autoplaylist".format(url), delete_after=30)
+                    else:
+                        return Response("No song removed?", delete_after=30)
+        else:
+            return Response('Put `+` or `-` to add or remove song from autoplaylist', delete_after=25)
+            
+            
+                
+                
+    async def process_link(self, url, check_plist=False):
+        linegens = defaultdict(lambda: None, **{
+                "youtube":    lambda d: 'https://youtube.com/watch?v=%s' % d['id'],
+                "soundcloud": lambda d: d['url'],
+                "bandcamp":   lambda d: d['url']
+            })
+        urlgens = defaultdict(lambda: None, **{
+                "youtube":    lambda d: 'https://youtube.com/watch?v=%s' % d['id'],
+                "soundcloud": lambda d: d['webpage_url'].replace('https','http',1),
+                "bandcamp":   lambda d: d['webpage_url']
+            })    
+        info = await self.downloader.safe_extract_info(self.loop, url, download=False, process=False)
+       
+        if not info:
+            return Response("```Not Valid Link or nothing form search```", delete_after=30) if not check_plist else None
+            
+        if info.get('entries', None) or info.get('_type', '') == 'playlist':
+            #do playlist stuff
+            url_list = []
+            if info.get('url', None) != info.get('webpage_url', info.get('url', None)):
+                pass 
+            else:
+                return await self.process_link(info.get(''))
+
+            exfunc = linegens[info['extractor'].split(':')[0]]
+
+            if not exfunc:
+                return Response("Could not extract info from input url, unsupported playlist type.", expire_in=25)
+            
+            for item in info['entries']:
+                url_list.append(exfunc(item))
+            return url_list
+        elif check_plist:
+            return None
+ 
+        if info.get('url', '').startswith('ytsearch'):
+            #it's a search string instead of a link
+            return Response("```Need a Link```",delete_after=30)
+        if info.get('is_live', False):
+            return Reponse("Don't think I can add streams", delete_after=30)
+        
+        #just a normal link, carry on
+        if info['extractor'] in ['generic', 'Dropbox']:
+            try:
+                headers = await get_header(self.aiosession, info['url'])
+                content_type = headers.get('CONTENT-TYPE')
+                log.debug("Got content type {}".format(content_type))
+
+            except Exception as e:
+                log.warning("Failed to get content type for url {} ({})".format(song_url, e))
+                content_type = None
+
+            if content_type:
+                if content_type.startswith(('application/', 'image/')):
+                    if not any(x in content_type for x in ('/ogg', '/octet-stream')):
+                        # How does a server say `application/ogg` what the actual fuck
+                        return Response("Invalid content type \"%s\" for url %s" % (content_type, song_url), delete_after=30)
+
+                elif content_type.startswith('text/html'):
+                    #log.warning("Got text/html for content-type, this might be a stream.") 
+                    return Reponse("Don't think I can add streams v2", delete_after=30)
+        exfunc = urlgens[info['extractor'].split(':')[0]]
+
+        if not exfunc:
+            return Response("Could not extract info from input url, unsupported playlist type.", expire_in=25)
+            
+        return [exfunc(info)]
+
+                    
+                
+                
+
+            
+            
+
+        
         
 
