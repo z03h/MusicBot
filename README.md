@@ -1,8 +1,8 @@
 # MusicBot
 
-[![GitHub release](https://img.shields.io/github/release/Just-Some-Bots/MusicBot.svg?style=flat-square)](https://github.com/Just-Some-Bots/MusicBot/wiki)
+[![GitHub release](https://img.shields.io/github/release/Just-Some-Bots/MusicBot.svg?style=flat-square)](https://just-some-bots.github.io/MusicBot/)
 [![Python](https://img.shields.io/badge/python-3.5%2C%203.6-blue.svg?style=flat-square)](https://www.python.org/downloads/)
-[![Discord](https://img.shields.io/discord/129489631539494912.svg?style=flat-square)](https://discord.gg/bots)
+[![Discord](https://discordapp.com/api/guilds/129489631539494912/widget.png?style=shield)](https://discord.gg/bots)
 
 ## z03h add/edits
 
