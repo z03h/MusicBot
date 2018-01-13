@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.5%2C%203.6-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![Discord](https://img.shields.io/discord/129489631539494912.svg?style=flat-square)](https://discord.gg/bots)
 
-##z03h add/edits
+## z03h add/edits
 
 * [ADDED] cmd last : shows last played songs
 * [ADDED] cmd rm : removes song at a specific index from queue
