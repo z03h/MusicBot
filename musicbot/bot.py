@@ -1133,6 +1133,11 @@ class MusicBot(discord.Client):
         log.info("  Downloaded songs will be " + ['deleted', 'saved'][self.config.save_videos])
         if self.config.status_message:
             log.info("  Status message: " + self.config.status_message)
+
+        log.info("  Write current songs to file: " + ['Disabled', 'Enabled'][self.config.write_current_song])
+        log.info("  Author insta-skip: " + ['Disabled', 'Enabled'][self.config.allow_author_skip])
+        log.info("  Spotify integration: " + ['Disabled', 'Enabled'][self.config._spotify])
+
         print(flush=True)
 
         await self.update_now_playing_status()
@@ -1176,7 +1181,7 @@ class MusicBot(discord.Client):
                     commands.append("{}{}".format(self.config.command_prefix, command_name))
 
             helpmsg += ", ".join(commands)
-            helpmsg += "```\n<https://github.com/SexualRhinoceros/MusicBot/wiki/Commands-list>"
+            helpmsg += "```\n<https://just-some-bots.github.io/MusicBot/>"
             helpmsg += "You can also use `{}help x` for more info about each command.".format(self.config.command_prefix)
 
             return Response(helpmsg, reply=True, delete_after=60)
@@ -1306,8 +1311,13 @@ class MusicBot(discord.Client):
         linksRegex = '((http(s)*:[/][/]|www.)([a-z]|[A-Z]|[0-9]|[/.]|[~])*)'
         pattern = re.compile(linksRegex)
         matchUrl = pattern.match(song_url)
-        if matchUrl is None:
-            song_url = song_url.replace('/', '%2F')
+        song_url = song_url.replace('/', '%2F') if matchUrl is None else song_url
+
+        # Rewrite YouTube playlist URLs if the wrong URL type is given
+        playlistRegex = r'watch\?v=.+&(list=[^&]+)'
+        matches = re.search(playlistRegex, song_url)
+        groups = matches.groups() if matches is not None else []
+        song_url = "https://www.youtube.com/playlist?" + groups[0] if len(groups) > 0 else song_url
 
         async with self.aiolocks[_func_() + ':' + author.id]:
             if permissions.max_songs and player.playlist.count_for_user(author) >= permissions.max_songs:
@@ -1916,7 +1926,7 @@ class MusicBot(discord.Client):
 
         if author.id == self.config.owner_id \
                 or permissions.instaskip \
-                or author == player.current_entry.meta.get('author', None):
+                or (self.config.allow_author_skip and author == player.current_entry.meta.get('author', None)):
 
             player.skip()  # check autopause stuff here
             await self._manual_delete_check(message)
@@ -1959,6 +1969,36 @@ class MusicBot(discord.Client):
                 reply=True,
                 delete_after=20
             )
+
+    async def cmd_remove(self, message, player, index):
+        """
+        Usage:
+            {command_prefix}remove [number]
+	    
+        Removes a song from the queue at the given position, where the position is a number from {command_prefix}queue.
+        """
+
+        if not player.playlist.entries:
+            raise exceptions.CommandError("There are no songs queued.", expire_in=20)
+
+        try:
+            index = int(index)
+
+        except ValueError:
+            raise exceptions.CommandError('{} is not a valid number.'.format(index), expire_in=20)
+
+        if 0 < index <= len(player.playlist.entries):
+            try:
+                song_title = player.playlist.entries[index-1].title
+                player.playlist.remove_entry((index)-1)
+
+            except IndexError:
+                raise exceptions.CommandError("Something went wrong while the song was being removed. Try again with a new position from `" + self.config.command_prefix + "queue`", expire_in=20)
+
+            return Response("\N{CHECK MARK} removed **" + song_title + "**", delete_after=20)
+
+        else:
+            raise exceptions.CommandError("You can't remove the current song (skip it instead), or a song in a position that doesn't exist.", expire_in=20)
 
     async def cmd_volume(self, message, player, new_volume=None):
         """
@@ -2699,40 +2739,6 @@ class MusicBot(discord.Client):
             
 ############### z03h stuff below
                 
-    async def cmd_rm(self, message, player, author, permissions, index):
-        """
-        Usage:
-            {command_prefix}rm <index>
-                
-                index of song to remove
-            
-            Removes song at index in queue
-        """
-        
-        try:
-            num=int(index)
-            if (num < 1):
-                return Response('`Number must be greater than 0`', delete_after = 20)
-            if num >len(player.playlist.entries):
-                return Response('`Number must be less than queue length({})`'.format(len(player.playlist)), reply=True, delete_after=20)
-        except ValueError:
-            return Response('`Not an integer`', delete_after = 20)
-            
-        if author.id == self.config.owner_id \
-                or permissions.instaskip \
-                or player.playlist.entries[(num-1)].meta['author'] == None \
-                or author == player.playlist.entries[(num-1)].meta['author']:
-            await self._manual_delete_check(message)
-        
-            entry = player.playlist.entries[(num-1)]
-            del player.playlist.entries[(num-1)]
-            
-            if not self.config.save_videos:
-                await player._delete_file(entry.filename)
-            
-            return Response('Removed `{}`'.format(entry.title), reply=True, delete_after=30)
-        else:
-            return Response('Cannot remove `{}` from `{}`'.format(entry.title,entry.meta.get('author',''), reply=True, delete_after=20))
             
     async def cmd_last(self, player, num=None):
         """
