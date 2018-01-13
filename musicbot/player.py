@@ -18,8 +18,6 @@ from .lib.event_emitter import EventEmitter
 from .constructs import Serializable, Serializer
 from .exceptions import FFmpegError, FFmpegWarning
 
-from collections import deque
-
 log = logging.getLogger(__name__)
 
 
@@ -104,9 +102,6 @@ class MusicPlayer(EventEmitter, Serializable):
         self.playlist = playlist
         self.state = MusicPlayerState.STOPPED
         self.skip_state = None
-        
-        #z03h
-        self.last_played = deque(maxlen=25)
 
         self._volume = bot.config.default_volume
         self._play_lock = asyncio.Lock()
@@ -179,9 +174,7 @@ class MusicPlayer(EventEmitter, Serializable):
 
     def _playback_finished(self):
         entry = self._current_entry
-        #z03h
-        self.last_played.appendleft(entry)
-        
+
         if self._current_player:
             self._current_player.after = None
             self._kill_current_player()
@@ -225,11 +218,12 @@ class MusicPlayer(EventEmitter, Serializable):
             try:
                 os.unlink(filename)
                 break
-
             except PermissionError as e:
                 if e.winerror == 32:  # File is in use
                     await asyncio.sleep(0.25)
-
+            except FileNotFoundError:
+                log.debug('Could not find delete {} as it was not found. Skipping.'.format(filename), exc_info=True)
+                break
             except Exception:
                 log.error("Error trying to delete {}".format(filename), exc_info=True)
                 break
