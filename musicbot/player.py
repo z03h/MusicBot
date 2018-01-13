@@ -101,6 +101,7 @@ class MusicPlayer(EventEmitter, Serializable):
         self.loop = bot.loop
         self.voice_client = voice_client
         self.playlist = playlist
+        self.last_played = deque(maxlen=25)
         self.state = MusicPlayerState.STOPPED
         self.skip_state = None
 
@@ -175,7 +176,7 @@ class MusicPlayer(EventEmitter, Serializable):
 
     def _playback_finished(self):
         entry = self._current_entry
-
+        self.last_played.appendleft(entry)
         if self._current_player:
             self._current_player.after = None
             self._kill_current_player()

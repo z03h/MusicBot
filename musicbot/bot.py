@@ -2928,7 +2928,7 @@ class MusicBot(discord.Client):
             {command_prefix}last <num>
 
             shows the last <num> songs played
-        max num = 25
+        will only show last 25 songs (defaults to 3)
         """
         if num:
             try:
@@ -2936,7 +2936,7 @@ class MusicBot(discord.Client):
             except ValueError:
                 return Response('`Must be a number`', delete=20)
         else:
-            num = 5
+            num = 3
             
         msg_txt = ["Last Played:"]
         for i in range(0,min(num, len(player.last_played))):

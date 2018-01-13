@@ -285,10 +285,7 @@ class ConfigDefaults:
     debug_level = 'INFO'
     status_message = None
     write_current_song = False
-<<<<<<< HEAD
-=======
     allow_author_skip = True
->>>>>>> review
 
     options_file = 'config/options.ini'
     blacklist_file = 'config/blacklist.txt'
