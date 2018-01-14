@@ -63,6 +63,8 @@ class Config:
         self.write_current_song = config.getboolean('MusicBot', 'WriteCurrentSong', fallback=ConfigDefaults.write_current_song)
         self.allow_author_skip = config.getboolean('MusicBot', 'AllowAuthorSkip', fallback=ConfigDefaults.allow_author_skip)
 
+        self.auto_dc = config.getint('MusicBot', 'AutoDC', fallback=ConfigDefaults.auto_dc)
+
 
         self.debug_level = config.get('MusicBot', 'DebugLevel', fallback=ConfigDefaults.debug_level)
         self.debug_level_str = self.debug_level
@@ -159,6 +161,10 @@ class Config:
 
         self.create_empty_file_ifnoexist('config/blacklist.txt')
         self.create_empty_file_ifnoexist('config/whitelist.txt')
+        
+        if (self.auto_dc <0):
+            log.warning("Invalid AutoDC option \"{}\" given, falling back to disabled".format(self.auto_dc))
+            self.auto_dc = 0
 
     def create_empty_file_ifnoexist(self, path):
         if not os.path.isfile(path):
@@ -286,6 +292,7 @@ class ConfigDefaults:
     status_message = None
     write_current_song = False
     allow_author_skip = True
+    auto_dc = 0
 
     options_file = 'config/options.ini'
     blacklist_file = 'config/blacklist.txt'

@@ -93,7 +93,8 @@ class MusicBot(discord.Client):
         ssd_defaults = {
             'last_np_msg': None,
             'auto_paused': False,
-            'availability_paused': False
+            'availability_paused': False,
+            'auto_dc': None
         }
         self.server_specific_data = defaultdict(ssd_defaults.copy)
 
@@ -1163,6 +1164,8 @@ class MusicBot(discord.Client):
         log.info("  Auto-Summon: " + ['Disabled', 'Enabled'][self.config.auto_summon])
         log.info("  Auto-Playlist: " + ['Disabled', 'Enabled'][self.config.auto_playlist] + " (order: " + ['sequential', 'random'][self.config.auto_playlist_random] + ")")
         log.info("  Auto-Pause: " + ['Disabled', 'Enabled'][self.config.auto_pause])
+        if self.config.auto_pause:
+            log.info("    Auto DC: " + ['Disabled', '{} minutes'.format(self.config.auto_dc)][self.config.auto_dc>0])
         log.info("  Delete Messages: " + ['Disabled', 'Enabled'][self.config.delete_messages])
         if self.config.delete_messages:
             log.info("    Delete Invoking: " + ['Disabled', 'Enabled'][self.config.delete_invoking])
@@ -2500,6 +2503,15 @@ class MusicBot(discord.Client):
 
     async def cmd_disconnect(self, server):
         await self.disconnect_voice_client(server)
+        if self.config.auto_dc:
+            if self.server_specific_data[after.server]['auto_dc']:
+                try:                    
+                    self.server_specific_data[after.server]['auto_dc'].cancel()
+                    await self.server_specific_data[after.server]['auto_dc']
+                except:
+                    pass
+            self.server_specific_data[after.server]['auto_dc'] = None
+        await self.update_now_playing_status()
         return Response("\N{DASH SYMBOL}", delete_after=20)
 
     async def cmd_restart(self, channel):
@@ -2797,7 +2809,14 @@ class MusicBot(discord.Client):
                 channel = state.my_voice_channel,
                 reason = "(joining empty channel)"
             ).strip())
-
+            if self.config.auto_dc:
+                if self.server_specific_data[after.server]['auto_dc']:
+                    try:                    
+                        self.server_specific_data[after.server]['auto_dc'].cancel()
+                        await self.server_specific_data[after.server]['auto_dc']
+                    except:
+                        pass
+                self.server_specific_data[after.server]['auto_dc'] = asyncio.ensure_future(self._wait_disconnect(after.server, self.config.auto_dc))
             self.server_specific_data[after.server]['auto_paused'] = True
             player.pause()
             return
@@ -2810,7 +2829,15 @@ class MusicBot(discord.Client):
                         channel = state.my_voice_channel,
                         reason = ""
                     ).strip())
-
+                    if self.config.auto_dc:
+                        if self.server_specific_data[after.server]['auto_dc']:
+                            try:   
+                                print('cancel to unpause')                            
+                                self.server_specific_data[after.server]['auto_dc'].cancel()
+                                await self.server_specific_data[after.server]['auto_dc']
+                            except:
+                                pass
+                        self.server_specific_data[after.server]['auto_dc'] = None
                     self.server_specific_data[after.server]['auto_paused'] = False
                     player.resume()
             else:
@@ -2820,6 +2847,16 @@ class MusicBot(discord.Client):
                         channel = state.my_voice_channel,
                         reason = "(empty channel)"
                     ).strip())
+                    if self.config.auto_dc:
+                        if self.server_specific_data[after.server]['auto_dc']:
+                            try: 
+                                print('cancel to pause')
+                                self.server_specific_data[after.server]['auto_dc'].cancel()
+                                await self.server_specific_data[after.server]['auto_dc']
+                            except:
+                                pass
+                        print("auto_dc set")
+                        self.server_specific_data[after.server]['auto_dc'] = asyncio.ensure_future(self._wait_disconnect(after.server, self.config.auto_dc))
 
                     self.server_specific_data[after.server]['auto_paused'] = True
                     player.pause()
@@ -3223,14 +3260,12 @@ class MusicBot(discord.Client):
             return Response("Could not extract info from input url, unsupported playlist type.", expire_in=25)
             
         return [exfunc(info)]
-
-                    
-                
-                
-
-            
-            
-
+        
+    async def _wait_disconnect(self, server, after):
+        await asyncio.sleep(after*60)
+        await self.disconnect_voice_client(server)
+        await self.update_now_playing_status()
+        log.debug("Disconnected on server({}) after {} minutes of inactivity".format(server.name, after))
         
         
 
