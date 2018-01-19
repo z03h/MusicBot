@@ -2227,7 +2227,7 @@ class MusicBot(discord.Client):
         bool_n = ['off', 'n', 'disabled']
         generic = ['save_videos', 'now_playing_mentions', 'auto_playlist_random',
                    'auto_pause', 'delete_messages', 'delete_invoking',
-                   'write_current_song']  # these need to match attribute names in the Config class
+                   'write_current_song', 'auto_dc']  # these need to match attribute names in the Config class
         if option in ['autoplaylist', 'auto_playlist']:
             if value in bool_y:
                 if self.config.auto_playlist:
@@ -2917,7 +2917,6 @@ class MusicBot(discord.Client):
                     if self.config.auto_dc:
                         if self.server_specific_data[after.server]['auto_dc']:
                             try:   
-                                print('cancel to unpause')                            
                                 self.server_specific_data[after.server]['auto_dc'].cancel()
                                 await self.server_specific_data[after.server]['auto_dc']
                             except:
@@ -2940,7 +2939,6 @@ class MusicBot(discord.Client):
                                 await self.server_specific_data[after.server]['auto_dc']
                             except:
                                 pass
-                        print("auto_dc set")
                         self.server_specific_data[after.server]['auto_dc'] = asyncio.ensure_future(self._wait_disconnect(after.server, self.config.auto_dc))
 
                     self.server_specific_data[after.server]['auto_paused'] = True
@@ -3029,7 +3027,7 @@ class MusicBot(discord.Client):
             return Response('`Not an integer`', delete_after = 20)
             
         if author.id == self.config.owner_id \
-                or permissions.instaskip \
+                or permissions.remove \
                 or player.playlist.entries[(num-1)].meta['author'] == None \
                 or author == player.playlist.entries[(num-1)].meta['author']:
             await self._manual_delete_check(message)
@@ -3354,7 +3352,7 @@ class MusicBot(discord.Client):
         await asyncio.sleep(after*60)
         await self.disconnect_voice_client(server)
         await self.update_now_playing_status()
-        log.debug("Disconnected on server({}) after {} minutes of inactivity".format(server.name, after))
+        log.info("Disconnected on server({}) after {} minutes of inactivity".format(server.name, after))
 
         
         
