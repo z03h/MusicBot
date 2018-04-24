@@ -20,12 +20,15 @@ class PermissionsDefaults:
     MaxSongs = 0
     MaxSongLength = 0
     MaxPlaylistLength = 0
+    MaxSearchItems = 10
 
     AllowPlaylists = True
     InstaSkip = False
     Remove = False
     SkipWhenAbsent = True
     BypassKaraokeMode = False
+
+    Extractors = set()
 
 
 class Permissions:
@@ -111,12 +114,15 @@ class PermissionGroup:
         self.max_songs = section_data.get('MaxSongs', fallback=PermissionsDefaults.MaxSongs)
         self.max_song_length = section_data.get('MaxSongLength', fallback=PermissionsDefaults.MaxSongLength)
         self.max_playlist_length = section_data.get('MaxPlaylistLength', fallback=PermissionsDefaults.MaxPlaylistLength)
+        self.max_search_items = section_data.get('MaxSearchItems', fallback=PermissionsDefaults.MaxSearchItems)
 
         self.allow_playlists = section_data.get('AllowPlaylists', fallback=PermissionsDefaults.AllowPlaylists)
         self.instaskip = section_data.get('InstaSkip', fallback=PermissionsDefaults.InstaSkip)
         self.remove = section_data.get('Remove', fallback=PermissionsDefaults.Remove)
         self.skip_when_absent = section_data.get('SkipWhenAbsent', fallback=PermissionsDefaults.SkipWhenAbsent)
         self.bypass_karaoke_mode = section_data.get('BypassKaraokeMode', fallback=PermissionsDefaults.BypassKaraokeMode)
+
+        self.extractors = section_data.get('Extractors', fallback=PermissionsDefaults.Extractors)
 
         self.validate()
 
@@ -136,6 +142,9 @@ class PermissionGroup:
         if self.user_list:
             self.user_list = set(self.user_list.split())
 
+        if self.extractors:
+            self.extractors = set(self.extractors.split())
+
         try:
             self.max_songs = max(0, int(self.max_songs))
         except:
@@ -150,6 +159,15 @@ class PermissionGroup:
             self.max_playlist_length = max(0, int(self.max_playlist_length))
         except:
             self.max_playlist_length = PermissionsDefaults.MaxPlaylistLength
+
+        try:
+            self.max_search_items = max(0, int(self.max_search_items))
+        except:
+            self.max_search_items = PermissionsDefaults.MaxSearchItems
+
+        if int(self.max_search_items) > 100:
+            log.warning('Max search items can\'t be larger than 100. Setting to 100.')
+            self.max_search_items = 100
 
         self.allow_playlists = configparser.RawConfigParser.BOOLEAN_STATES.get(
             self.allow_playlists, PermissionsDefaults.AllowPlaylists
@@ -166,7 +184,7 @@ class PermissionGroup:
         self.skip_when_absent = configparser.RawConfigParser.BOOLEAN_STATES.get(
             self.skip_when_absent, PermissionsDefaults.SkipWhenAbsent
         )
-        
+
         self.bypass_karaoke_mode = configparser.RawConfigParser.BOOLEAN_STATES.get(
             self.bypass_karaoke_mode, PermissionsDefaults.BypassKaraokeMode
         )

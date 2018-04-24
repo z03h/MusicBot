@@ -65,6 +65,9 @@ class Config:
         self.use_experimental_equalization = config.getboolean('MusicBot', 'UseExperimentalEqualization', fallback=ConfigDefaults.use_experimental_equalization)
         self.embeds = config.getboolean('MusicBot', 'UseEmbeds', fallback=ConfigDefaults.embeds)
         self.queue_length = config.getint('MusicBot', 'QueueLength', fallback=ConfigDefaults.queue_length)
+        self.remove_ap = config.getboolean('MusicBot', 'RemoveFromAPOnError', fallback=ConfigDefaults.remove_ap)
+        self.show_config_at_start = config.getboolean('MusicBot', 'ShowConfigOnLaunch', fallback=ConfigDefaults.show_config_at_start)
+        self.legacy_skip = config.getboolean('MusicBot', 'LegacySkip', fallback=ConfigDefaults.legacy_skip)
 
         self.debug_level = config.get('MusicBot', 'DebugLevel', fallback=ConfigDefaults.debug_level)
         self.debug_level_str = self.debug_level
@@ -77,8 +80,30 @@ class Config:
 
         self.run_checks()
 
+        self.missing_keys = set()
+        self.check_changes(config)
+
         self.find_autoplaylist()
 
+    def get_all_keys(self, conf):
+        """Returns all config keys as a list"""
+        sects = dict(conf.items())
+        keys = []
+        for k in sects:
+            s = sects[k]
+            keys += [key for key in s.keys()]
+        return keys
+
+    def check_changes(self, conf):
+        exfile = 'config/example_options.ini'
+        if os.path.isfile(exfile):
+            usr_keys = self.get_all_keys(conf)
+            exconf = configparser.ConfigParser(interpolation=None)
+            if not exconf.read(exfile, encoding='utf-8'):
+                return
+            ex_keys = self.get_all_keys(exconf)
+            if set(usr_keys) != set(ex_keys):
+                self.missing_keys = set(ex_keys) - set(usr_keys)  # to raise this as an issue in bot.py later
 
     def run_checks(self):
         """
@@ -156,9 +181,9 @@ class Config:
 
         self.delete_invoking = self.delete_invoking and self.delete_messages
 
-        self.bound_channels = set(item.replace(',', ' ').strip() for item in self.bound_channels)
+        self.bound_channels = set(int(item.replace(',', ' ').strip()) for item in self.bound_channels)
 
-        self.autojoin_channels = set(item.replace(',', ' ').strip() for item in self.autojoin_channels)
+        self.autojoin_channels = set(int(item.replace(',', ' ').strip()) for item in self.autojoin_channels)
 
         ap_path, ap_name = os.path.split(self.auto_playlist_file)
         apn_name, apn_ext = os.path.splitext(ap_name)
@@ -200,6 +225,8 @@ class Config:
 
             self.owner_id = bot.cached_app_info.owner.id
             log.debug("Acquired owner id via API")
+        else:
+            self.owner_id = int(self.owner_id)
 
         if self.owner_id == bot.user.id:
             raise HelpfulError(
@@ -305,6 +332,9 @@ class ConfigDefaults:
     use_experimental_equalization = False
     embeds = True
     queue_length = 10
+    remove_ap = True
+    show_config_at_start = False
+    legacy_skip = False
 
     options_file = 'config/options.ini'
     blacklist_file = 'config/blacklist.txt'
