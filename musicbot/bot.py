@@ -658,6 +658,7 @@ class MusicBot(discord.Client):
                     player.autoplaylist = list(set(self.autoplaylist))
 
             while player.autoplaylist:
+
                 if self.config.auto_playlist_random:
                     random.shuffle(player.autoplaylist)
                     song_url = random.choice(player.autoplaylist)
@@ -679,6 +680,9 @@ class MusicBot(discord.Client):
                         log.error("Error processing \"{url}\": {ex}".format(url=song_url, ex=e))
                     
                     await self.remove_from_autoplaylist(song_url, ex=e, delete_from_ap=True)
+                    if not player.autoplaylist:
+                        log.debug("No content in current autoplaylist. Filling with new music...")
+                        player.autoplaylist = list(set(self.autoplaylist))
                     continue
 
                 except Exception as e:
@@ -686,8 +690,10 @@ class MusicBot(discord.Client):
                     log.exception()
 
                     self.autoplaylist.remove(song_url)
+                    if not player.autoplaylist:
+                        log.debug("No content in current autoplaylist. Filling with new music...")
+                        player.autoplaylist = list(set(self.autoplaylist))
                     continue
-
                 if info.get('entries', None):  # or .get('_type', '') == 'playlist'
                     log.debug("Playlist found but is unsupported at this time, skipping.")
                     # TODO: Playlist expansion
@@ -1358,7 +1364,7 @@ class MusicBot(discord.Client):
             )
         return True
 
-    async def cmd_play(self, message, player, channel, author, permissions, leftover_args, song_url=''):
+    async def cmd_play(self, player, channel, author, permissions, leftover_args, song_url=''):
         """
         Usage:
             {command_prefix}play song_link
@@ -1866,7 +1872,6 @@ class MusicBot(discord.Client):
                 await self.safe_delete_message(result_message)
                 await self.safe_delete_message(confirm_message)
                 await self.safe_delete_message(response_message)
-
                 return await self.cmd_play(player, channel, author, permissions, [], e['webpage_url'])
 
                 #return Response("Alright, coming right up!", delete_after=30)
