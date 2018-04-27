@@ -671,15 +671,20 @@ class MusicBot(discord.Client):
                 try:
                     info = await self.downloader.extract_info(player.playlist.loop, song_url, download=False, process=False)
                 except downloader.youtube_dl.utils.DownloadError as e:
+                    errorStr = ''
                     if 'YouTube said:' in e.args[0]:
                         # url is bork, remove from list and put in removed list
                         log.error("Error processing youtube url:\n{}".format(e.args[0]))
+                        errorStr = e.args[0]
 
                     else:
                         # Probably an error from a different extractor, but I've only seen youtube's
                         log.error("Error processing \"{url}\": {ex}".format(url=song_url, ex=e))
+                        errorStr = e
                     
                     await self.remove_from_autoplaylist(song_url, ex=e, delete_from_ap=True)
+                    owner = self._get_owner()
+                    await self.safe_send_message(owner, 'Removed song from autoplaylist <{}>\n`{}`'.format(song_url,errorStr))
                     if not player.autoplaylist:
                         log.debug("No content in current autoplaylist. Filling with new music...")
                         player.autoplaylist = list(set(self.autoplaylist))
