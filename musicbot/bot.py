@@ -2386,7 +2386,7 @@ class MusicBot(discord.Client):
                 return await self.cmd_pldump(channel, info.get(''))
 
         linegens = defaultdict(lambda: None, **{
-            "youtube":    lambda d: 'https://youtube.com/watch?v=%s' % d['id'],
+            "youtube":    lambda d: 'https://www.youtube.com/watch?v=%s' % d['id'],
             "soundcloud": lambda d: d['url'],
             "bandcamp":   lambda d: d['url']
         })
@@ -3233,8 +3233,10 @@ class MusicBot(discord.Client):
                 for xurl in verified_url:
                     #print(xurl)
                     if xurl not in self.autoplaylist:
-                        self.autoplaylist.append(xurl)
-                        added += 1
+                        wxurl = xurl.replace('www.', '', 1)
+                        if wxurl not in self.autoplaylist:
+                            self.autoplaylist.append(xurl)
+                            added += 1
                 if added: 
                     write_file(self.config.auto_playlist_file, self.autoplaylist)
                     log.debug("Appended {}/{} from {} to autoplaylist".format(added, total, url))
@@ -3247,7 +3249,6 @@ class MusicBot(discord.Client):
                 else:
                     return Response("Nothing added?", delete_after=30)
         elif op == '-':
-            url = url.replace('www.', '', 1)
             busymsg = await self.safe_send_message(channel, "Working on link `{}`".format(url))
             verified_url = await self.process_link(url, check_plist=True)
 
@@ -3262,8 +3263,13 @@ class MusicBot(discord.Client):
                     for xurl in verified_url:
                         if xurl in self.autoplaylist:
                             self.autoplaylist.remove(xurl)
-
                             removed+=1
+                        else:
+                            wxurl = xurl.replace('www.', '', 1)
+                            if wxurl in self.autoplaylist:
+                                self.autoplaylist.remove(wxurl)
+                                removed+=1
+                        
                     if removed:        
                         write_file(self.config.auto_playlist_file, self.autoplaylist)
                         log.debug("Removed {}/{} from {} from autoplaylist".format(removed, total, url))
@@ -3276,14 +3282,25 @@ class MusicBot(discord.Client):
                 else:
                     #not playlist
                     url = url.replace('youtu.be/', 'youtube.com/watch?v=', 1)
-                    print(url)
+                    wurl = ''
+                    if '://youtu' in url:
+                        wurl = url.replace('://youtu', '://www.youtu', 1)
+                    elif 'www.' in url:
+                        wurl = url.replace('www.', '', 1)
+                    #print(url)
                     if url in self.autoplaylist:
                         self.autoplaylist.remove(url)
                         write_file(self.config.auto_playlist_file, self.autoplaylist)
                         log.debug("Removed {} from autoplaylist".format(url))
                         return Response("Removed `{}` from autoplaylist".format(url), delete_after=30)
-                    else:
-                        return Response("No song removed?", delete_after=30)
+                    elif wurl:
+                        if  wurl in self.autoplaylist:
+                            self.autoplaylist.remove(wurl)
+                            write_file(self.config.auto_playlist_file, self.autoplaylist)
+                            log.debug("Removed {} from autoplaylist".format(wurl))
+                            return Response("Removed `{}` from autoplaylist".format(wurl), delete_after=30)
+                    
+                    return Response("No song removed?", delete_after=30)
         else:
             return Response('Put `+` or `-` to add or remove song from autoplaylist', delete_after=25)
             
@@ -3292,12 +3309,12 @@ class MusicBot(discord.Client):
                 
     async def process_link(self, url, check_plist=False):
         linegens = defaultdict(lambda: None, **{
-                "youtube":    lambda d: 'https://youtube.com/watch?v=%s' % d['id'],
+                "youtube":    lambda d: 'https://www.youtube.com/watch?v=%s' % d['id'],
                 "soundcloud": lambda d: d['url'],
                 "bandcamp":   lambda d: d['url']
             })
         urlgens = defaultdict(lambda: None, **{
-                "youtube":    lambda d: 'https://youtube.com/watch?v=%s' % d['id'],
+                "youtube":    lambda d: 'https://www.youtube.com/watch?v=%s' % d['id'],
                 "soundcloud": lambda d: d['webpage_url'].replace('https','http',1),
                 "bandcamp":   lambda d: d['webpage_url']
             })    
